@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CodeInsight — Análise de Código</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="./src/style.css">
+  <link rel="icon" type="image/png" href="./1776688753171_image.png">
+  <script>
+    // Carrega o tema imediatamente para evitar flash de tela branca
+    const savedTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+    document.documentElement.setAttribute('data-theme', savedTheme);
+  </script>
+</head>
+
+
+<body>
+
+  <!-- ═══════════════════════
+       TOPBAR
+    ═══════════════════════ -->
+  <div class="topbar">
+    <div class="topbar-brand">
+      <img src="./1776688753171_image.png" alt="CodeInsight" style="width:32px;height:32px;object-fit:contain;">
+      <span class="brand-name">CodeInsight</span>
+      <span class="brand-version">v0.0.8</span>
+    </div>
+
+    <div style="margin-left: auto; display: flex; align-items: center;">
+      <button id="themeToggle" class="theme-toggle-btn" onclick="toggleTheme()" title="Alternar tema claro/escuro">
+      </button>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════
+       HERO / UPLOAD ZONE
+  ═══════════════════════ -->
+  <div class="hero" id="heroSection">
+    <div class="hero-inner">
+      <h1 class="hero-title">Análise estática<br>de código.</h1>
+      <p class="hero-sub">Segurança · Performance · Arquitetura · GeneXus 9</p>
+
+      <div class="upload-area" id="dropzone" onclick="document.getElementById('fileInput').click()">
+        <input type="file" id="fileInput" style="display:none"
+          accept=".js,.ts,.py,.java,.go,.cs,.php,.rb,.jsx,.tsx,.vue,.cpp,.c,.rs,.xpz,.xml,.zip" multiple>
+        <div class="upload-icon">
+          <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M24 32V16M24 16l-7 7M24 16l7 7" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M8 36a8 8 0 01-.7-16A12 12 0 0132 14a10 10 0 110 20H8" stroke-linecap="round" />
+          </svg>
+        </div>
+        <div class="upload-label">Arraste seu arquivo aqui</div>
+        <div class="upload-hint">XPZ · JS · TS · Python · Java · Go · C# e mais</div>
+        <div class="upload-cta">ou clique para selecionar</div>
+      </div>
+
+      <div id="fileChip" style="display:none"></div>
+
+      <div class="hero-actions">
+        <button class="btn-run" id="btnAnalyze" disabled onclick="runAnalysis()">
+          <svg viewBox="0 0 20 20" fill="currentColor">
+            <path d="M6.3 2.8A1 1 0 005 3.7v12.6a1 1 0 001.5.86l10-6.3a1 1 0 000-1.72l-10-6.3z" />
+          </svg>
+          Analisar
+        </button>
+        <button class="btn-demo" onclick="loadDemoGXL()">Demo GeneXus</button>
+        <button class="btn-demo" onclick="loadDemo()">Demo Código</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════
+       RESULTADO
+  ═══════════════════════ -->
+  <div id="analysisResult" style="display:none" class="result-root fade-in">
+
+    <!-- Barra de resumo colada no topo -->
+    <div class="summary-bar">
+      <div class="summary-score" id="scoreSummary">
+        <span class="score-num" id="scoreNum">--</span>
+        <div class="score-meta">
+          <span class="score-grade" id="scoreGrade">—</span>
+          <span class="score-label" id="scoreLabel">qualidade geral</span>
+        </div>
+        <svg class="score-ring-svg" viewBox="0 0 60 60">
+          <circle cx="30" cy="30" r="24" fill="none" stroke="currentColor" stroke-width="4" opacity=".12" />
+          <circle id="scoreArc" cx="30" cy="30" r="24" fill="none" stroke="currentColor" stroke-width="4"
+            stroke-linecap="round" stroke-dasharray="150.8" stroke-dashoffset="150.8" transform="rotate(-90 30 30)"
+            style="transition:stroke-dashoffset 1.4s ease,stroke .5s" />
+        </svg>
+      </div>
+
+      <div class="summary-divider"></div>
+
+      <div class="summary-pills">
+        <button class="pill pill-critical" onclick="setSevFilter('critical', this)">
+          <span id="fcs-critical">0</span> críticos
+        </button>
+        <button class="pill pill-high" onclick="setSevFilter('high', this)">
+          <span id="fcs-high">0</span> altos
+        </button>
+        <button class="pill pill-medium" onclick="setSevFilter('medium', this)">
+          <span id="fcs-medium">0</span> médios
+        </button>
+      </div>
+
+      <div class="summary-divider"></div>
+
+      <!-- Abas na summary bar -->
+      <nav class="tab-nav">
+        <button class="tab-btn active" onclick="showTab('issues',this)" data-tab="issues">Issues</button>
+        <button class="tab-btn" onclick="showTab('files',this)" data-tab="files">Arquivos</button>
+        <button class="tab-btn" onclick="showTab('security',this)" data-tab="security">Segurança</button>
+        <button class="tab-btn" onclick="showTab('arch',this)" data-tab="arch">Arquitetura</button>
+        <button class="tab-btn" onclick="showTab('deps',this)" data-tab="deps">Dependências</button>
+        <button class="tab-btn" onclick="showTab('report',this)" data-tab="report">Relatório</button>
+        <button class="tab-btn" onclick="showTab('cicd',this)" data-tab="cicd">CI/CD</button>
+        <button class="tab-btn" id="tab-db-btn" data-tab="db" onclick="showTab('db',this)">Banco</button>
+      </nav>
+
+      <button class="btn-new-analysis" onclick="resetToUpload()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <path d="M21 12a9 9 0 11-9-9c2.5 0 4.8 1 6.4 2.6L21 8" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M21 3v5h-5" stroke-linecap="round" stroke-linejoin="round" />
+        </svg>
+        Nova análise
+      </button>
+    </div>
+
+    <!-- Metric cards faixa -->
+    <div class="metrics-strip" id="metricGrid"></div>
+
+    <!-- Conteúdo das abas -->
+    <div class="tab-content">
+
+      <!-- ISSUES -->
+      <div id="tab-issues" class="tab-panel">
+        <div class="panel-header">
+          <h2 class="panel-title">Issues detectados <span class="panel-count" id="tab-issues-count">0</span>
+          </h2>
+          <div class="search-wrap">
+            <svg class="search-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
+              <circle cx="7" cy="7" r="4.5" />
+              <path d="M10.5 10.5l3 3" stroke-linecap="round" />
+            </svg>
+            <input class="search-input" id="searchInput" placeholder="Buscar por arquivo, regra ou categoria…"
+              oninput="filterIssues()">
+          </div>
+        </div>
+        <div class="issue-list" id="issueList"></div>
+      </div>
+
+      <!-- ARQUIVOS -->
+      <div id="tab-files" class="tab-panel" style="display:none">
+        <div class="panel-header">
+          <h2 class="panel-title">Arquivos analisados <span class="panel-count" id="tab-files-count">0</span>
+          </h2>
+          <span id="filesTabBadge"
+            style="display:none;font-size:10px;padding:2px 8px;border-radius:4px;background:rgba(108,142,245,.15);color:#6c8ef5;font-family:var(--mono);font-weight:600">GeneXus
+            XPZ</span>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table" id="filesTable">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th>Tipo</th>
+                <th class="col-pasta" style="display:none">Pasta</th>
+                <th>CC</th>
+                <th>Manutenibilidade</th>
+                <th>Risco</th>
+                <th>LOC</th>
+                <th>Issues</th>
+              </tr>
+            </thead>
+            <tbody id="objTableBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- SEGURANÇA -->
+      <div id="tab-security" class="tab-panel" style="display:none">
+        <div class="panel-header">
+          <h2 class="panel-title">Análise de segurança <span class="panel-count" id="tab-security-count">0</span></h2>
+        </div>
+        <div id="securityContent"></div>
+      </div>
+
+      <!-- ARQUITETURA -->
+      <div id="tab-arch" class="tab-panel" style="display:none">
+        <div class="panel-header">
+          <h2 class="panel-title">Violações de arquitetura</h2>
+        </div>
+        <div id="archContent"></div>
+      </div>
+
+      <!-- DEPENDÊNCIAS -->
+      <div id="tab-deps" class="tab-panel" style="display:none">
+        <div class="panel-header">
+          <h2 class="panel-title">Mapa de dependências <span class="panel-count" id="tab-deps-count">0</span>
+          </h2>
+        </div>
+        <div class="dep-grid" id="depGrid"></div>
+      </div>
+
+      <!-- RELATÓRIO -->
+      <div id="tab-report" class="tab-panel" style="display:none">
+        <div id="reportContent"></div>
+      </div>
+
+      <!-- CI/CD -->
+      <div id="tab-cicd" class="tab-panel" style="display:none">
+        <div class="panel-header">
+          <h2 class="panel-title">Quality Gate — CI/CD</h2>
+          <button class="btn-download" onclick="downloadJson()">⬇ Baixar JSON</button>
+        </div>
+        <pre class="json-output" id="jsonOutput"></pre>
+      </div>
+
+      <!-- BANCO -->
+      <div id="tab-db" class="tab-panel" style="display:none">
+        <div class="panel-header">
+          <h2 class="panel-title">Banco de dados — Transactions <span class="panel-count" id="tab-db-count">0</span>
+          </h2>
+        </div>
+        <div id="dbContent"></div>
+      </div>
+
+    </div><!-- /tab-content -->
+  </div><!-- /analysisResult -->
+
+  <!-- PROGRESS OVERLAY -->
+  <div id="progressOverlay" style="display:none" class="progress-overlay">
+    <div class="progress-card">
+      <div class="progress-title">Analisando…</div>
+      <div class="progress-bar-track">
+        <div class="progress-bar-fill" id="pbar"></div>
+      </div>
+      <div class="progress-steps" id="progressSteps">
+        <div class="ps" id="ps0">Lendo arquivos</div>
+        <div class="ps" id="ps1">Detectando linguagens</div>
+        <div class="ps" id="ps2">Executando regras</div>
+        <div class="ps" id="ps3">Detectando vulnerabilidades</div>
+        <div class="ps" id="ps4">Calculando métricas</div>
+        <div class="ps" id="ps5">Verificando arquitetura</div>
+        <div class="ps" id="ps6">Gerando relatório</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL -->
+  <div id="issueModal" class="modal-backdrop" style="display:none" onclick="">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-head-left">
+          <span class="modal-id" id="modalId"></span>
+          <h2 class="modal-title" id="modalTitle"></h2>
+          <div class="modal-meta" id="modalMeta"></div>
+        </div>
+        <button class="modal-close" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body" id="modalBody"></div>
+    </div>
+  </div>
+
+  <!-- MODAL CODE PREVIEW -->
+  <div id="codePreviewModal" class="modal-backdrop" style="display:none" onclick="">
+    <div class="modal-card cp-modal-card">
+      <div class="cp-header">
+        <div class="cp-header-info">
+          <span class="cp-lang-badge" id="cpLangBadge">?</span>
+          <span class="cp-filename" id="cpFileName"></span>
+          <div id="cpIssuesSummary" style="display:flex;gap:5px;flex-wrap:wrap;align-items:center"></div>
+        </div>
+        <button class="modal-close" onclick="closeCodePreview()">✕</button>
+      </div>
+      <div class="cp-section-tabs" id="cpSectionTabs" style="display:none"></div>
+      <div class="cp-modal-body" id="cpBody"></div>
+    </div>
+  </div>
+
+  <script type="module" src="/src/app.js"></script>
+</body>
+
+</html>
