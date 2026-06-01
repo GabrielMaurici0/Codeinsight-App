@@ -1,7 +1,3 @@
-// ════════════════════════════════════════════
-// UI: Controles de Interface (Abas, Filtros, Ações)
-// ════════════════════════════════════════════
-
 import {
   getActiveSev,
   setActiveSev,
@@ -9,6 +5,7 @@ import {
   getAllIssues,
 } from "../core/state.js";
 import { renderIssues, displayIssues } from "./render.js";
+import { buildSarif } from "../utils/sarif-builder.js";
 
 // ── Abas ──
 export function showTab(name, el) {
@@ -41,7 +38,6 @@ export function setSevFilter(val, el) {
 // ── Busca de Issues ──
 export function filterIssues() {
   const q = document.getElementById("searchInput").value.toLowerCase();
-  // CORREÇÃO: Usando o getter getAllIssues()
   const issuesList = getAllIssues() || [];
   const filtered = issuesList.filter(
     (i) =>
@@ -54,9 +50,8 @@ export function filterIssues() {
   displayIssues(filtered);
 }
 
-// ── Download JSON ──
+// ── Download JSON (Customizado) ──
 export function downloadJson() {
-  // CORREÇÃO: Pegando o report via getter
   const report = getReport();
   if (!report) return;
 
@@ -69,7 +64,19 @@ export function downloadJson() {
   a.click();
 }
 
-window.showTab = showTab;
-window.setSevFilter = setSevFilter;
-window.filterIssues = filterIssues;
-window.downloadJson = downloadJson;
+// ── Download SARIF (Padrão de Indústria) ──
+export function downloadSarif() {
+  const report = getReport();
+  if (!report) return;
+
+  const sarifData = buildSarif(report);
+  const blob = new Blob([JSON.stringify(sarifData, null, 2)], {
+    type: "application/sarif+json",
+  });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "codeinsight-results.sarif";
+  a.click();
+}
+
+

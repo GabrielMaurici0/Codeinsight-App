@@ -1,6 +1,3 @@
-// ════════════════════════════════════════════
-// UTILS: Syntax Highlighting
-// ════════════════════════════════════════════
 import { escHtml } from "./helpers.js";
 
 const HIGHLIGHT_RULES = {
@@ -46,8 +43,15 @@ export function syntaxHighlight(line, lang) {
   const placeholders = [];
   let safe = escHtml(line);
 
+  // Gera um prefixo único e imprevisível para cada execução
+  // Usa a API nativa de Crypto se disponível, ou fallback seguro
+  const secretPrefix =
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : Math.random().toString(36).substring(2, 15);
+
   function stash(html) {
-    const k = `\x00_PH_${placeholders.length}_PH_\x00`;
+    const k = `\x00_${secretPrefix}_${placeholders.length}_\x00`;
     placeholders.push(html);
     return k;
   }
@@ -90,8 +94,9 @@ export function syntaxHighlight(line, lang) {
     );
   }
 
+  // Devolve as strings html seguras para os lugares corretos
   placeholders.forEach((val, i) => {
-    safe = safe.replace(`\x00_PH_${i}_PH_\x00`, val);
+    safe = safe.replace(`\x00_${secretPrefix}_${i}_\x00`, val);
   });
 
   return safe;

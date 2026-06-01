@@ -1,7 +1,3 @@
-// ════════════════════════════════════════════
-// UI: Gerenciamento da Barra de Progresso
-// ════════════════════════════════════════════
-
 export function showProgress() {
   const hero = document.getElementById("heroSection");
   if (hero) hero.style.display = "none";

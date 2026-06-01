@@ -1,8 +1,3 @@
-// ════════════════════════════════════════════
-// 8. DADOS DE DEMO
-// ════════════════════════════════════════════
-
-/** Retorna arquivos de código com exemplos de todos os tipos de issues */
 export function getDemoFiles() {
   return [
     {
@@ -158,7 +153,6 @@ module.exports = { createOrder };`,
   ];
 }
 
-/** Retorna o XML de demo do GeneXus (Sistema de Pedidos) */
 export function getGXLDemoXML() {
   return `<?xml version="1.0" encoding="utf-8"?>
 <KnowledgeBase>

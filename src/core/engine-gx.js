@@ -4,7 +4,6 @@ import { escHtml } from "../utils/helpers.js";
 // 1. ENGINE GX — Parser XML
 // ════════════════════════════════════════════
 
-/** Navega pelo DOM XML até o caminho de tags e retorna textContent */
 function gxTxt(el, ...path) {
   let cur = el;
   for (const p of path) {
@@ -50,7 +49,6 @@ function gxGetVars(el) {
     .filter((v) => v.name);
 }
 
-/** Extrai nomes de objetos chamados (Call, udp, Do) */
 function gxExtractCalls(content) {
   const calls = new Set();
   [
@@ -64,11 +62,6 @@ function gxExtractCalls(content) {
   return [...calls];
 }
 
-/**
- * Faz o parse de um arquivo GXL/XML do GeneXus.
- * Suporta os formatos: ExportFile>GXObject, GXL flat e KnowledgeBase com atributos.
- * @returns {{ objects: Object[], tables: Object[] }}
- */
 export function parseGX(xml) {
   const parser = new DOMParser();
   let doc;
@@ -102,17 +95,6 @@ export function parseGX(xml) {
     const rules = gxGetRules(typeEl);
     const events = gxGetEvents(typeEl);
 
-    [source, ...events, ...rules].forEach((codeBlock) => {
-      if (!codeBlock) return;
-      const commentLines = codeBlock
-        .split("\n")
-        .filter((l) => /^\s*(\/\/|\/\*)/.test(l));
-      if (commentLines.length > 0) {
-        console.log(
-          `[LOG-COMMENTS] Objeto ${name}: ${commentLines.length} linhas de comentários lidas e contabilizadas no preview.`,
-        );
-      }
-    });
     const variables = gxGetVars(typeEl);
     const raw =
       [source, ...events, ...rules].join("\n") || typeEl.textContent || "";
@@ -254,9 +236,6 @@ export function parseGX(xml) {
   return { objects: filteredObjects, tables };
 }
 
-/**
- * Determina se um objeto GX deve aparecer na listagem/contagem do preview.
- */
 function gxShouldListObject(obj) {
   const type = (obj.obj_type || "").toLowerCase();
 
@@ -286,7 +265,7 @@ function gxShouldListObject(obj) {
 // 2. ENGINE GX — Regras de más práticas
 // ════════════════════════════════════════════
 
-const GX_RULES = [
+export const GX_RULES = [
   {
     re: /for\s+each[\s\S]*?for\s+each/gi,
     id: "GX_PERF001",
@@ -373,7 +352,6 @@ const GX_RULES = [
 // 3. ENGINE GX — Métricas e análise de objetos
 // ════════════════════════════════════════════
 
-/** Calcula CC, MI, issues e risk_score para um objeto GeneXus */
 export function computeGXMetrics(obj) {
   const content = obj.raw_content || "";
 
@@ -425,70 +403,70 @@ export function computeGXMetrics(obj) {
     lineOffset += rl.length;
   });
 
-  GX_RULES.forEach((bp) => {
-    const flags = (bp.re.flags || "").replace(/g/g, "") + "g";
-    const re = new RegExp(bp.re.source, flags);
-    const snippets = [];
-    let m;
+GX_RULES.forEach((bp) => {
+  const flags = (bp.re.flags || "").replace(/g/g, "") + "g";
+  const re = new RegExp(bp.re.source, flags);
+  const snippets = [];
+  let m;
 
-    while ((m = re.exec(content)) !== null) {
-      const before = content.slice(0, m.index);
-      const globalLine = before.split("\n").length - 1;
-      let sectionName = "Código",
-        localLine = globalLine;
+  while ((m = re.exec(content)) !== null) {
+    const before = content.slice(0, m.index);
+    const globalLine = before.split("\n").length - 1;
+    let sectionName = "Código",
+      localLine = globalLine;
 
-      for (const sec of sections) {
-        if (
-          globalLine >= sec.offset &&
-          globalLine < sec.offset + sec.lines.length
-        ) {
-          sectionName = sec.name;
-          localLine = globalLine - sec.offset;
-          break;
-        }
+    for (const sec of sections) {
+      if (
+        globalLine >= sec.offset &&
+        globalLine < sec.offset + sec.lines.length
+      ) {
+        sectionName = sec.name;
+        localLine = globalLine - sec.offset;
+        break;
       }
-
-      const lineNum = localLine + 1;
-      const dk = bp.id + "|" + sectionName + "|" + lineNum;
-      if (seen.has(dk)) continue;
-      seen.add(dk);
-
-      const secLines =
-        sections.find((s) => s.name === sectionName)?.lines ||
-        content.split("\n");
-      const ctxStart = Math.max(0, localLine - 2);
-      const ctxEnd = Math.min(secLines.length - 1, localLine + 2);
-
-      snippets.push({
-        lineNum,
-        sectionName,
-        lines: secLines.slice(ctxStart, ctxEnd + 1).map((t, i) => ({
-          n: ctxStart + i + 1,
-          txt: t,
-          hit: ctxStart + i + 1 === lineNum,
-        })),
-      });
-      if (snippets.length >= 3) break;
     }
 
-    if (snippets.length > 0) {
-      obj.issues.push({
-        id: bp.id,
-        type: "gx_rule",
-        severity: bp.sev,
-        title: bp.title,
-        description: bp.desc,
-        suggestion: bp.suggestion,
-        category: bp.cat,
-        occurrences: snippets.length,
-        object_name: obj.name,
-        object_type: obj.obj_type,
-        file: obj.name + "(" + obj.obj_type + ")",
-        lang: "gxl",
-        snippets,
-      });
-    }
-  });
+    const lineNum = localLine + 1;
+    const dk = bp.id + "|" + sectionName + "|" + lineNum;
+    if (seen.has(dk)) continue;
+    seen.add(dk);
+
+    const secLines =
+      sections.find((s) => s.name === sectionName)?.lines ||
+      content.split("\n");
+    const ctxStart = Math.max(0, localLine - 2);
+    const ctxEnd = Math.min(secLines.length - 1, localLine + 2);
+
+    snippets.push({
+      lineNum,
+      sectionName,
+      lines: secLines.slice(ctxStart, ctxEnd + 1).map((t, i) => ({
+        n: ctxStart + i + 1,
+        txt: t,
+        hit: ctxStart + i + 1 === lineNum,
+      })),
+    });
+    if (snippets.length >= 3) break;
+  }
+
+  if (snippets.length > 0) {
+    obj.issues.push({
+      id: bp.id,
+      type: "gx_rule",
+      severity: bp.sev,
+      title: bp.title,
+      description: bp.desc,
+      suggestion: bp.suggestion,
+      category: bp.cat,
+      occurrences: snippets.length,
+      object_name: obj.name,
+      object_type: obj.obj_type,
+      file: obj.name + "(" + obj.obj_type + ")",
+      lang: "gxl",
+      snippets,
+    });
+  }
+});
 
   if (obj.lines_of_code > 500 && obj.obj_type != "structuredatatype")
     obj.issues.push({
@@ -553,7 +531,6 @@ export function computeGXMetrics(obj) {
   return obj;
 }
 
-/** Constrói mapa de dependências entre objetos GeneXus */
 export function buildGXDepMap(objects) {
   const map = {},
     byName = {};
@@ -578,7 +555,6 @@ export function buildGXDepMap(objects) {
   return map;
 }
 
-/** ENGINE GX — Análise do banco de dados */
 export function analyzeGXDB(tables) {
   const issues = [];
   let score = 100;
@@ -658,7 +634,6 @@ export function generateGXReport(objects, tables, depMap, db, projectName) {
     total_tables: tables.length,
   };
 
-  // ── CENTRALIZAÇÃO DOS LIMITES (DRY) ──
   const THRESHOLDS = { min_score: 60, max_critical: 0, max_high_risk: 2 };
 
   const s = {
@@ -704,7 +679,6 @@ export function generateGXReport(objects, tables, depMap, db, projectName) {
     .sort((a, b) => b.composite - a.composite)
     .slice(0, 10);
 
-  // Contrato unificado e padronizado com a engine genérica
   const cicd = {
     schema_version: "2.0",
     tool: "CodeInsight-GXL",

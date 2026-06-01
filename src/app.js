@@ -1,6 +1,9 @@
+import { closeModal, closeCodePreview, cpSwitchTab } from "./ui/modals.js";
+import { closeHistoryModal } from "./ui/history.js";
 import {
   getFiles,
   setFiles,
+  getFileContents,
   setFileContents,
   setReport,
   resetState,
@@ -13,59 +16,144 @@ import {
   analyzeGXDB,
   generateGXReport,
 } from "./core/engine-gx.js";
-import { readZip } from "./utils/zip.js";
 import { sleep } from "./utils/helpers.js";
 import { detectLang } from "./utils/language.js";
 import { getDemoFiles, getGXLDemoXML } from "./data/demo-data.js";
 import { renderAll, _showFileChip } from "./ui/render.js";
 import { showProgress, setProgress, hideProgress } from "./ui/progress.js";
 import { initEvents } from "./ui/events.js";
-import { updateThemeIcon } from "./ui/theme.js";
+import { updateThemeIcon, toggleTheme } from "./ui/theme.js";
+import { saveAnalysisToHistory } from "./core/storage.js";
+import { initRuleCatalog } from "./ui/rules-catalog.js";
 import "./ui/modals.js";
-import "./ui/controls.js";
+import { openHistoryModal } from "./ui/history.js";
 import "./style.css";
+import { renderHeatmap } from "./ui/heatmap.js";
+import { readZip } from "./utils/zip.js"; // Importado para ler o pacote retornado pelo GitHub
+import {
+  showTab,
+  setSevFilter,
+  filterIssues,
+  downloadJson,
+  downloadSarif,
+} from "./ui/controls.js";
 
 document.addEventListener("DOMContentLoaded", () => {
   initEvents();
   const currentTheme =
     document.documentElement.getAttribute("data-theme") || "light";
   updateThemeIcon(currentTheme);
+  initRuleCatalog();
+
+  document
+    .getElementById("btnHistory")
+    ?.addEventListener("click", openHistoryModal);
+  document
+    .getElementById("themeToggle")
+    ?.addEventListener("click", toggleTheme);
+  document.getElementById("btnAnalyze")?.addEventListener("click", runAnalysis);
+  document.getElementById("btnDemoGXL")?.addEventListener("click", loadDemoGXL);
+  document.getElementById("btnDemoCode")?.addEventListener("click", loadDemo);
+  document
+    .getElementById("btnGithubImport")
+    ?.addEventListener("click", loadFromGithub); // Vincula o botão do GitHub
+  document
+    .getElementById("btnPrintPdf")
+    ?.addEventListener("click", () => window.print());
+
+  document
+    .getElementById("btnNewAnalysis")
+    ?.addEventListener("click", resetToUpload);
+  
+  document
+    .getElementById("btnNewAnalysis")
+    ?.addEventListener("click", resetToUpload);
+
+  // ── DELEGAÇÃO DE EVENTOS: ABAS E FILTROS ──
+  document.getElementById("mainTabNav")?.addEventListener("click", (e) => {
+    const btn = e.target.closest(".tab-btn");
+    if (btn && btn.dataset.tab) {
+      showTab(btn.dataset.tab, btn);
+    }
+  });
+
+  document.querySelector(".summary-pills")?.addEventListener("click", (e) => {
+    const btn = e.target.closest(".pill");
+    if (btn && btn.dataset.sev) {
+      setSevFilter(btn.dataset.sev, btn);
+    }
+  });
+
+  document
+    .getElementById("searchInput")
+    ?.addEventListener("input", filterIssues);
+  document
+    .getElementById("btnDownloadJson")
+    ?.addEventListener("click", downloadJson);
+  document
+    .getElementById("btnDownloadSarif")
+    ?.addEventListener("click", downloadSarif);
+  
+  document
+    .getElementById("btnCloseIssueModal")
+    ?.addEventListener("click", closeModal);
+  document
+    .getElementById("btnCloseCodePreviewModal")
+    ?.addEventListener("click", closeCodePreview);
+  document
+    .getElementById("btnCloseHistoryModal")
+    ?.addEventListener("click", closeHistoryModal);
+
+  document.getElementById("historyModal")?.addEventListener("click", (e) => {
+    if (e.target.id === "historyModal") closeHistoryModal();
+  });
+
+  document.getElementById("cpSectionTabs")?.addEventListener("click", (e) => {
+    const btn = e.target.closest(".cp-section-tab");
+    if (btn && btn.dataset.cpTab) {
+      cpSwitchTab(btn.dataset.cpTab, btn);
+    }
+  });
 });
 
-window.resetToUpload = function () {
+function resetToUpload() {
   document.getElementById("analysisResult").style.display = "none";
   document.getElementById("heroSection").style.display = "";
   document.getElementById("fileChip").style.display = "none";
   document.getElementById("btnAnalyze").disabled = true;
+  const input = document.getElementById("githubUrlInput");
+  if (input) input.value = ""; // Limpa a URL antiga
   resetState();
-};
+}
 
 async function executePipeline(pipelineName, pipelineLogic) {
   try {
     showProgress();
     setProgress(10, 0);
-    await sleep(250);
+    await new Promise((r) => setTimeout(r, 10));
 
     const report = await pipelineLogic();
 
     if (report) {
       setReport(report);
       renderAll(report);
+      renderHeatmap(report.files);
+
+      try {
+        await saveAnalysisToHistory(report, getFileContents());
+      } catch (e) {
+        console.error("Falha ao salvar no histórico:", e);
+      }
     }
   } catch (error) {
-    console.error(
-      `[Pipeline Error] Falha crítica na execução de '${pipelineName}':`,
-      error,
-    );
-    alert(
-      `Ocorreu um erro durante a análise. O arquivo pode estar corrompido ou em um formato não suportado.\n\nDetalhes no console.`,
-    );
+    console.error(`[Pipeline Error] Falha em '${pipelineName}':`, error);
+    showErrorToast(error.message || "Ocorreu um erro durante a análise.");
   } finally {
     hideProgress();
   }
 }
 
-window.runAnalysis = async function () {
+async function runAnalysis() {
   const currentFiles = getFiles();
   if (!currentFiles || !currentFiles.length) return;
 
@@ -78,138 +166,231 @@ window.runAnalysis = async function () {
       return await processGenericFlow(currentFiles);
     }
   });
-};
+}
 
-window.loadDemo = async function () {
-  setFiles([]);
-  await executePipeline("loadDemo", async () => {
-    const demoFiles = getDemoFiles();
-    setProgress(30, 1);
-    await sleep(200);
-
-    const analyzed = demoFiles.map((f) =>
-      analyzeFile(f.name, f.content, detectLang(f.name)),
+/**
+ * ── FUNÇÃO ARQUITETURAL REUTILIZÁVEL DO WEB WORKER ──
+ * Centraliza o envio e tracking da análise genérica em lote via Worker paralelo
+ */
+function runGenericWorkerPipeline(parsedFiles, projectName) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(
+      new URL("./workers/analyzer.worker.js", import.meta.url),
+      { type: "module" }
     );
-    setProgress(55, 2);
-    await sleep(300);
-    setProgress(70, 3);
-    await sleep(250);
-    setProgress(85, 4);
-    await sleep(200);
 
-    const report = generateReport(analyzed, "demo-project");
-    setProgress(100, 6);
-    await sleep(400);
+    worker.onmessage = function (e) {
+      const { type, pct, step, report, message } = e.data;
 
-    _showFileChip(`demo-project (${demoFiles.length} arquivos)`, "demo");
+      if (type === "PROGRESS") {
+        setProgress(pct, step);
+      } else if (type === "DONE") {
+        setProgress(100, 6);
+        worker.terminate();
+        resolve(report);
+      } else if (type === "ERROR") {
+        worker.terminate();
+        reject(new Error(message));
+      }
+    };
 
+    worker.onerror = function (err) {
+      worker.terminate();
+      reject(err);
+    };
+
+    worker.postMessage({
+      type: "START_GENERIC",
+      payload: { files: parsedFiles, projectName },
+    });
+  });
+}
+
+async function loadFromGithub() {
+  const urlInput = document.getElementById("githubUrlInput");
+  const url = urlInput?.value.trim();
+
+  if (!url) {
+    showErrorToast("Por favor, insira uma URL válida do GitHub.");
+    return;
+  }
+
+  // Captura o Dono e o Nome do Repositório via Expressão Regular
+  const match = url.match(/github\.com\/([^/]+)\/([^/]+)/i);
+  if (!match) {
+    showErrorToast(
+      "Formato inválido! Use: https://github.com/dono/repositorio",
+    );
+    return;
+  }
+
+  const owner = match[1];
+  const repo = match[2].replace(/\.git$/i, ""); // Remove sufixo se colado do link de clone
+
+  await executePipeline("loadFromGithub", async () => {
+    setProgress(20, 0); // Etapa: Lendo arquivos (Iniciando stream de download)
+
+    // ── ROTA UNIVERSAL DE ZIPBALL CONVERTIDA PARA O CODETABS ──
+    // Usar o endpoint /zipball/ garante que o GitHub monte o pacote dinamicamente,
+    // mesmo se o repositório só tiver o arquivo README.md ou branches customizadas.
+    const targetUrl = `https://api.github.com/repos/${owner}/${repo}/zipball`;
+    const apiUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(targetUrl)}`;
+    const response = await fetch(apiUrl);
+
+    if (!response.ok) {
+      throw new Error(
+        "Não foi possível acessar o repositório. Verifique se a URL está correta e se o projeto é público.",
+      );
+    }
+
+    setProgress(45, 1); // Etapa: Detectando linguagens (Descompactando estrutura de bytes)
+    const buf = await response.arrayBuffer();
+    const { entries } = await readZip(buf);
+
+    // Mapeia e sanitiza caminhos do Zipball do GitHub (remove a pasta raiz temporária gerada pela API)
+    const parsedFiles = entries
+      .map((e) => {
+        const parts = e.name.split("/");
+        parts.shift(); // Remove a pasta hash temporária que o GitHub coloca no topo do zip
+        return { name: parts.join("/"), content: e.text };
+      })
+      .filter((f) => {
+        if (!f.name || !f.content?.trim()) return false;
+        // Reaplica a ignore list para economizar memória do Web Worker
+        const isTrash =
+          /\.(jpg|jpeg|png|gif|svg|ico|webp|mp4|mp3|wav|ogg|pdf|docx|xlsx|ttf|woff|woff2|eot)$/i.test(
+            f.name,
+          );
+        const isDepFolder =
+          /(^|\/)(node_modules|\.git|\.vscode|\.idea|dist|build|coverage)(\/|$)/i.test(
+            f.name,
+          );
+        return !isTrash && !isDepFolder;
+      });
+
+    if (parsedFiles.length === 0) {
+      throw new Error(
+        "Este repositório está vazio ou não contém arquivos de código-fonte analisáveis.",
+      );
+    }
+
+    // Inicializa o mapa global de conteúdos para suportar a visualização de código perfeitamente
     const contentsMap = {};
-    demoFiles.forEach((f) => {
+    parsedFiles.forEach((f) => {
       contentsMap[f.name] = f.content;
     });
     setFileContents(contentsMap);
 
+    _showFileChip(`${owner}/${repo}`, "GitHub Code", "var(--blue)", "📦");
+
+    // Envia os dados limpos para o Web Worker paralelo
+    return await runGenericWorkerPipeline(parsedFiles, repo);
+  });
+}
+
+async function loadDemo() {
+  setFiles([]);
+  await executePipeline("loadDemo", async () => {
+    const demoFiles = getDemoFiles();
+    setProgress(30, 1);
+    await new Promise((r) => setTimeout(r, 10));
+
+    const analyzed = demoFiles.map((f) =>
+      analyzeFile(f.name, f.content, detectLang(f.name)),
+    );
+    setProgress(70, 3);
+
+    const report = generateReport(analyzed, "demo-project");
+    setProgress(100, 6);
+
+    _showFileChip(`demo-project (${demoFiles.length} arquivos)`, "demo");
+
+    const contentsMap = {};
+    demoFiles.forEach((f) => { contentsMap[f.name] = f.content; });
+    setFileContents(contentsMap);
+
     return report;
   });
-};
+}
 
-window.loadDemoGXL = async function () {
+async function loadDemoGXL() {
   setFiles([]);
   await executePipeline("loadDemoGXL", async () => {
     const xml = getGXLDemoXML();
     setProgress(30, 1);
-    await sleep(200);
+    await new Promise((r) => setTimeout(r, 10));
 
     const { objects, tables } = parseGX(xml);
     setProgress(50, 2);
-    await sleep(300);
 
     const analyzed = objects.map(computeGXMetrics);
     setProgress(68, 3);
-    await sleep(250);
 
     const depMap = buildGXDepMap(analyzed);
     setProgress(82, 4);
-    await sleep(200);
 
     const db = analyzeGXDB(tables);
     setProgress(94, 5);
-    await sleep(200);
 
-    const report = generateGXReport(
-      analyzed,
-      tables,
-      depMap,
-      db,
-      "Demo — Sistema de Pedidos GeneXus",
-    );
+    const report = generateGXReport(analyzed, tables, depMap, db, "Demo — Sistema de Pedidos GeneXus");
     setProgress(100, 6);
-    await sleep(400);
 
-    _showFileChip(
-      "Demo GeneXus — Sistema de Pedidos",
-      "demo",
-      "var(--purple)",
-      "⬡",
-    );
+    _showFileChip("Demo GeneXus — Sistema de Pedidos", "demo", "var(--purple)", "⬡");
 
     return report;
   });
-};
+}
 
 async function processGXFlow(gxlFile) {
   setProgress(20, 1);
-  await sleep(200);
-  const buf = await gxlFile.arrayBuffer();
-  let xmlContent = "";
+  await new Promise((r) => setTimeout(r, 10));
 
-  try {
-    const { entries } = await readZip(buf);
-    const xmlEntry =
-      entries.find((e) => /\.(xml|gxl)$/i.test(e.name)) || entries[0];
-    xmlContent = xmlEntry ? xmlEntry.text : "";
-  } catch {
-    xmlContent = new TextDecoder("utf-8").decode(buf);
-    if (!xmlContent.includes("<")) {
-      xmlContent = new TextDecoder("latin1").decode(buf);
-    }
-  }
+  const buf = await gxlFile.arrayBuffer();
+
+  const xmlContent = await new Promise((resolve, reject) => {
+    const worker = new Worker(
+      new URL("./workers/zip.worker.js", import.meta.url),
+      { type: "module" },
+    );
+
+    worker.onmessage = function (e) {
+      if (e.data.type === "DONE") {
+        worker.terminate();
+        resolve(e.data.xmlContent);
+      }
+    };
+
+    worker.onerror = function (err) {
+      worker.terminate();
+      reject(err);
+    };
+
+    worker.postMessage({ type: "EXTRACT_GX", payload: { buffer: buf } }, [buf]);
+  });
 
   setProgress(40, 2);
-  await sleep(300);
   const { objects, tables } = parseGX(xmlContent);
 
   setProgress(60, 3);
-  await sleep(300);
   const analyzed = objects.map(computeGXMetrics);
 
   setProgress(75, 4);
-  await sleep(200);
   const depMap = buildGXDepMap(analyzed);
 
   setProgress(88, 5);
-  await sleep(200);
   const db = analyzeGXDB(tables);
 
   setProgress(96, 6);
-  await sleep(200);
   const report = generateGXReport(analyzed, tables, depMap, db, gxlFile.name);
 
   setProgress(100, 6);
-  await sleep(400);
-  _showFileChip(
-    gxlFile.name,
-    `${(gxlFile.size / 1024).toFixed(0)} KB`,
-    "var(--purple)",
-    "⬡",
-  );
+  _showFileChip(gxlFile.name, `${(gxlFile.size / 1024).toFixed(0)} KB`, "var(--purple)", "⬡");
 
   return report;
 }
 
 async function processGenericFlow(files) {
   setProgress(25, 1);
-  await sleep(200);
 
   const fileContents = await Promise.all(files.map((f) => f.text()));
   const parsedFiles = files.map((f, i) => ({
@@ -218,28 +399,40 @@ async function processGenericFlow(files) {
   }));
 
   const contentsMap = {};
-  parsedFiles.forEach((f) => {
-    contentsMap[f.name] = f.content;
-  });
+  parsedFiles.forEach((f) => { contentsMap[f.name] = f.content; });
   setFileContents(contentsMap);
 
-  setProgress(45, 2);
-  await sleep(300);
-  const analyzed = parsedFiles.map((f) =>
-    analyzeFile(f.name, f.content, detectLang(f.name)),
-  );
+  // Redireciona para a nossa nova rotina unificada do Worker
+  return await runGenericWorkerPipeline(parsedFiles, parsedFiles[0]?.name || "projeto");
+}
 
-  setProgress(62, 3);
-  await sleep(250);
-  setProgress(78, 4);
-  await sleep(250);
+function showErrorToast(message) {
+  const toast = document.createElement("div");
+  toast.style.position = "fixed";
+  toast.style.bottom = "24px";
+  toast.style.right = "24px";
+  toast.style.backgroundColor = "var(--red-bg)";
+  toast.style.color = "var(--red)";
+  toast.style.border = "1.5px solid var(--red-bd)";
+  toast.style.padding = "16px 20px";
+  toast.style.borderRadius = "var(--radius)";
+  toast.style.boxShadow = "var(--shadow-lg)";
+  toast.style.zIndex = "9999";
+  toast.style.fontFamily = "var(--font)";
+  toast.style.fontSize = "14px";
+  toast.style.fontWeight = "600";
+  toast.style.display = "flex";
+  toast.style.alignItems = "center";
+  toast.style.gap = "10px";
+  toast.style.animation = "slideUp 0.3s ease";
 
-  const report = generateReport(analyzed, parsedFiles[0]?.name || "projeto");
+  toast.innerHTML = `<span style="font-size: 18px;">⚠️</span> <span>${message}</span>`;
+  document.body.appendChild(toast);
 
-  setProgress(90, 5);
-  await sleep(200);
-  setProgress(100, 6);
-  await sleep(400);
-
-  return report;
+  setTimeout(() => {
+    toast.style.opacity = "0";
+    toast.style.transform = "translateY(10px)";
+    toast.style.transition = "all 0.3s ease";
+    setTimeout(() => toast.remove(), 300);
+  }, 5000);
 }

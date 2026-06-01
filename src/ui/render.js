@@ -4,11 +4,6 @@ import { langLabel } from "../utils/language.js";
 import { ISSUE_KB } from "../data/issue-kb.js";
 import { openIssueModal, openCodePreview } from "./modals.js";
 
-// ════════════════════════════════════════════
-// 12. RENDERIZAÇÃO
-// ════════════════════════════════════════════
-
-/** Renderiza todos os painéis após uma análise completa */
 export function renderAll(r) {
   const hero = document.getElementById("heroSection");
   if (hero) hero.style.display = "none";
@@ -17,7 +12,6 @@ export function renderAll(r) {
   const isGXL = !!r.isGXL;
   document.getElementById("tab-db-btn").style.display = isGXL ? "" : "none";
 
-  // Sempre inicia na aba Issues independente do tipo de arquivo
   document
     .querySelectorAll(".tab-btn")
     .forEach((t) => t.classList.remove("active"));
@@ -58,10 +52,8 @@ export function _showFileChip(name, size, iconColor, icon) {
   chip.style.display = "block";
 }
 
-// ── Score ──
 function renderScore(r) {
   const arc = document.getElementById("scoreArc");
-  // novo viewBox 60×60, r=24, circunferência = 2π×24 ≈ 150.8
   const circ = 2 * Math.PI * 24;
 
   setTimeout(() => {
@@ -103,7 +95,6 @@ function renderScore(r) {
   document.getElementById("scoreLabel").textContent = label;
 }
 
-// ── Filtros (contagens na sidebar) ──
 function renderFilters(r) {
   const sev = { critical: 0, high: 0, medium: 0 };
   (r.allIssues || []).forEach((i) => {
@@ -128,7 +119,6 @@ function renderFilters(r) {
   }
 }
 
-// ── Cards de métricas ──
 function renderMetrics(r) {
   const m = r.metrics;
   const cards = r.isGXL
@@ -234,9 +224,7 @@ function renderMetrics(r) {
     .join("");
 }
 
-// ── Snippet de código (bloco de evidência no card de issue) ──
 export function renderSnippet(s) {
-  // Formato GXL: { lineNum, sectionName, lines: [{n, txt, hit}] }
   if (s.lines && Array.isArray(s.lines)) {
     return `
       <div class="evidence-block">
@@ -254,7 +242,6 @@ export function renderSnippet(s) {
         </div>
       </div>`;
   }
-  // Formato padrão: { line, code, hit }
   return `
     <div class="evidence-block">
       <div class="evidence-header">📍 Linha ${s.line}</div>
@@ -267,7 +254,6 @@ export function renderSnippet(s) {
     </div>`;
 }
 
-// ── Issues ──
 export function renderIssues(issues) {
   let filtered = issues;
   const activeFilter = getActiveFilter();
@@ -314,8 +300,8 @@ export function displayIssues(issues) {
       <div class="issue-card ${sevMap[iss.severity] || "sev-info"}" data-issue-index="${idx}" style="animation-delay:${Math.min(idx * 0.03, 0.4)}s">
         <div class="issue-card-inner">
           <div class="issue-top">
-            <span class="sev-badge ${sevMap[iss.severity] || "sev-info"}">${sevLbl[iss.severity] || iss.severity}</span>
-            <span class="issue-id">${iss.id}</span>
+            <span class="sev-badge ${sevMap[iss.severity] || "sev-info"}">${escHtml(sevLbl[iss.severity] || iss.severity)}</span>
+            <span class="issue-id">${escHtml(iss.id)}</span>
             <span class="issue-title">${escHtml(iss.title)}</span>
           </div>
           <span class="issue-file">◻ ${escHtml(iss.file)}</span>
@@ -342,7 +328,6 @@ export function displayIssues(issues) {
   });
 }
 
-// ── Tabela de arquivos ──
 function renderFiles(files, depMap, gxObjects) {
   const isGXL = !!gxObjects;
   const colorCC = (v) =>
@@ -353,14 +338,12 @@ function renderFiles(files, depMap, gxObjects) {
     v > 7 ? "var(--red)" : v > 4 ? "var(--orange)" : "var(--green)";
   const typeClass = (t) => "type-" + t.replace(/[^a-z]/g, "");
 
-  // Mostrar/ocultar coluna Pasta e badge GeneXus
   const pastaHeaders = document.querySelectorAll(".col-pasta");
   pastaHeaders.forEach((th) => (th.style.display = isGXL ? "" : "none"));
   const badge = document.getElementById("filesTabBadge");
   if (badge) badge.style.display = isGXL ? "" : "none";
 
   if (isGXL) {
-    // ── Modo GeneXus: renderiza objetos GX ──
     document.getElementById("objTableBody").innerHTML = gxObjects
       .map((o, idx) => {
         const hub = (depMap[o.name] || {}).is_hub;
@@ -401,7 +384,6 @@ function renderFiles(files, depMap, gxObjects) {
       row.addEventListener("mouseleave", () => (row.style.background = ""));
     });
   } else {
-    // ── Modo arquivo genérico ──
     document.getElementById("objTableBody").innerHTML = files
       .map((f, idx) => {
         const hub = (depMap[f.name] || {}).is_hub;
@@ -427,7 +409,6 @@ function renderFiles(files, depMap, gxObjects) {
     row.addEventListener("click", () => {
       const idx = parseInt(row.getAttribute("data-idx"));
       const f = files[idx];
-      // CORREÇÃO: getter do file contents
       const content = getFileContents()[f.name] || null;
       openCodePreview(f.name, content, f.lang, f.issues);
     });
@@ -440,7 +421,6 @@ function renderFiles(files, depMap, gxObjects) {
   }
 }
 
-// ── Segurança ──
 function renderSecurity(r) {
   const secIssues = r.allIssues.filter((i) => i.category === "Segurança");
   const vuln = [
@@ -495,7 +475,7 @@ function renderSecurity(r) {
                 ...new Set(iss.map((i) => i.file)),
               ]
                 .slice(0, 2)
-                .map((f) => f.split("/").pop())
+                .map((f) => escHtml(f.split("/").pop()))
                 .join(", ")}</div>`
             : ""
         }
@@ -534,16 +514,16 @@ function renderArch(r) {
     </div></div>`;
     violated.forEach((v) => {
       html += `<div class="arch-rule violated">
-        <div class="arch-rule-title">❌ ${v.rule}</div>
-        ${
-          v.files.length
-            ? `<div class="arch-rule-desc">Afetados: ${v.files
-                .slice(0, 3)
-                .map((f) => f.split("/").pop())
-                .join(", ")}</div>`
-            : ""
-        }
-      </div>`;
+            <div class="arch-rule-title">❌ ${escHtml(v.rule)}</div>
+            ${
+              v.files.length
+                ? `<div class="arch-rule-desc">Afetados: ${v.files
+                    .slice(0, 3)
+                    .map((f) => escHtml(f.split("/").pop()))
+                    .join(", ")}</div>`
+                : ""
+            }
+          </div>`;
     });
   } else {
     html += `<div class="quality-gate pass">
@@ -554,12 +534,11 @@ function renderArch(r) {
   }
 
   ok.forEach((v) => {
-    html += `<div class="arch-rule ok"><div class="arch-rule-title">✓ ${v.rule}</div></div>`;
+    html += `<div class="arch-rule ok"><div class="arch-rule-title">✓ ${escHtml(v.rule)}</div></div>`;
   });
   document.getElementById("archContent").innerHTML = html;
 }
 
-// ── Dependências ──
 function renderDeps(files, depMap) {
   document.getElementById("depGrid").innerHTML = files
     .map((f) => {
@@ -578,7 +557,6 @@ function renderDeps(files, depMap) {
     .join("");
 }
 
-// ── Banco de dados GX ──
 function renderGXDB(db) {
   if (!db?.tables?.length) {
     document.getElementById("dbContent").innerHTML =
@@ -596,7 +574,7 @@ function renderGXDB(db) {
     html += `<div class="quality-gate fail" style="margin-bottom:14px">
       <div class="qg-icon">⚠️</div>
       <div><div class="qg-title" style="color:#d97706">Problemas estruturais detectados</div>
-      <div class="qg-sub">${db.issues.map((i) => `${i.table}: ${i.issue}`).join(" · ")}</div></div>
+      <div class="qg-sub">${db.issues.map((i) => `${escHtml(i.table)}: ${escHtml(i.issue)}`).join(" · ")}</div></div>
     </div>`;
   }
 
@@ -633,7 +611,6 @@ function renderGXDB(db) {
   document.getElementById("dbContent").innerHTML = html;
 }
 
-// ── Relatório ──
 function renderReport(r) {
   const m = r.metrics;
   const passed = r.cicd.quality_gate.passed;
@@ -742,28 +719,56 @@ function renderReport(r) {
       .join("")}`;
 }
 
-// ── JSON CI/CD ──
-function renderJSON(r) {
-  const json = JSON.stringify(r.cicd, null, 2);
-  document.getElementById("jsonOutput").innerHTML = json
-    .replace(/("[\w_]+"):/g, '<span class="json-key">$1</span>:')
-    .replace(/: (".*?")/g, ': <span class="json-str">$1</span>')
-    .replace(/: (\d+\.?\d*)/g, ': <span class="json-num">$1</span>')
-    .replace(/: (true|false)/g, ': <span class="json-bool">$1</span>')
-    .replace(/: (null)/g, ': <span class="json-null">$1</span>');
+// Função auxiliar recursiva para construir o JSON colorido de forma segura
+function buildSafeJSONHtml(obj, indent = 0) {
+  const spaces = " ".repeat(indent);
+  
+  if (obj === null) return `<span class="json-null">null</span>`;
+  if (typeof obj === "boolean") return `<span class="json-bool">${obj}</span>`;
+  if (typeof obj === "number") return `<span class="json-num">${obj}</span>`;
+  if (typeof obj === "string") return `<span class="json-str">"${escHtml(obj)}"</span>`;
+
+  if (Array.isArray(obj)) {
+    if (obj.length === 0) return "[]";
+    let html = "[\n";
+    for (let i = 0; i < obj.length; i++) {
+      html += spaces + "  " + buildSafeJSONHtml(obj[i], indent + 2);
+      if (i < obj.length - 1) html += ",";
+      html += "\n";
+    }
+    html += spaces + "]";
+    return html;
+  }
+
+  if (typeof obj === "object") {
+    const keys = Object.keys(obj);
+    if (keys.length === 0) return "{}";
+    let html = "{\n";
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      // Escapa a chave e chama recursivamente para o valor
+      html += spaces + '  <span class="json-key">"' + escHtml(key) + '"</span>: ' + buildSafeJSONHtml(obj[key], indent + 2);
+      if (i < keys.length - 1) html += ",";
+      html += "\n";
+    }
+    html += spaces + "}";
+    return html;
+  }
+  return "";
 }
 
-// ════════════════════════════════════════════
-// 13. HANDLERS DE UI
-// ════════════════════════════════════════════
-
-// ── Pré-visualização de código ──
+export function renderJSON(r) {
+  const jsonOutput = document.getElementById("jsonOutput");
+  if (jsonOutput && r.cicd) {
+    jsonOutput.innerHTML = buildSafeJSONHtml(r.cicd);
+  }
+}
 
 /**
- * Abre o modal de pré-visualização de código para um arquivo ou objeto GX.
- * @param {string} name       - Nome do arquivo / objeto
- * @param {string|null} content - Conteúdo bruto do código
- * @param {string} lang       - Linguagem (js, py, gxl…)
- * @param {Array}  issues     - Issues detectados (para destacar linhas)
- * @param {Object} gxMeta     - Metadados GX (_source, _events, _rules, obj_type)
+ * 
+ * @param {string} name       
+ * @param {string|null} content 
+ * @param {string} lang       
+ * @param {Array}  issues     
+ * @param {Object} gxMeta     
  */

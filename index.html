@@ -28,12 +28,13 @@
     <div class="topbar-brand">
       <img src="./1776688753171_image.png" alt="CodeInsight" style="width:32px;height:32px;object-fit:contain;">
       <span class="brand-name">CodeInsight</span>
-      <span class="brand-version">v0.0.8</span>
+      <span class="brand-version">v1.0.0</span>
     </div>
 
-    <div style="margin-left: auto; display: flex; align-items: center;">
-      <button id="themeToggle" class="theme-toggle-btn" onclick="toggleTheme()" title="Alternar tema claro/escuro">
-      </button>
+
+    <div style="margin-left: auto; display: flex; align-items: center; gap: 16px;">
+      <button id="btnHistory" class="btn-demo" style="padding: 7px 14px; font-size: 13px; display: flex; align-items: center; gap: 6px; border-radius: 8px;" onclick="openHistoryModal()">⏳ Histórico</button>
+      <button id="themeToggle" class="theme-toggle-btn" title="Alternar tema claro/escuro"></button>
     </div>
   </div>
 
@@ -61,15 +62,25 @@
 
       <div id="fileChip" style="display:none"></div>
 
+      <div style="width: 100%; display: flex; gap: 8px; margin-bottom: 24px; max-width: 580px;">
+        <input type="text" id="githubUrlInput" class="search-input"
+          style="border: 1.5px solid var(--border); border-radius: 10px; padding: 12px 14px; background: var(--white); flex: 1;"
+          placeholder="Coloque a URL do repositório público (ex: https://github.com/user/repo)">
+        <button id="btnGithubImport" class="btn-demo"
+          style="white-space: nowrap; padding: 12px 18px; font-weight: 700; border-color: var(--blue-bd); color: var(--blue); background: var(--blue-bg);">
+          📦 Importar URL
+        </button>
+      </div>
+
       <div class="hero-actions">
-        <button class="btn-run" id="btnAnalyze" disabled onclick="runAnalysis()">
+        <button class="btn-run" id="btnAnalyze" disabled>
           <svg viewBox="0 0 20 20" fill="currentColor">
             <path d="M6.3 2.8A1 1 0 005 3.7v12.6a1 1 0 001.5.86l10-6.3a1 1 0 000-1.72l-10-6.3z" />
           </svg>
           Analisar
         </button>
-        <button class="btn-demo" onclick="loadDemoGXL()">Demo GeneXus</button>
-        <button class="btn-demo" onclick="loadDemo()">Demo Código</button>
+        <button id="btnDemoGXL" class="btn-demo">Demo GeneXus</button>
+        <button id="btnDemoCode" class="btn-demo">Demo Código</button>
       </div>
     </div>
   </div>
@@ -98,13 +109,13 @@
       <div class="summary-divider"></div>
 
       <div class="summary-pills">
-        <button class="pill pill-critical" onclick="setSevFilter('critical', this)">
+        <button class="pill pill-critical" data-sev="critical">
           <span id="fcs-critical">0</span> críticos
         </button>
-        <button class="pill pill-high" onclick="setSevFilter('high', this)">
+        <button class="pill pill-high" data-sev="high">
           <span id="fcs-high">0</span> altos
         </button>
-        <button class="pill pill-medium" onclick="setSevFilter('medium', this)">
+        <button class="pill pill-medium" data-sev="medium">
           <span id="fcs-medium">0</span> médios
         </button>
       </div>
@@ -112,18 +123,19 @@
       <div class="summary-divider"></div>
 
       <!-- Abas na summary bar -->
-      <nav class="tab-nav">
-        <button class="tab-btn active" onclick="showTab('issues',this)" data-tab="issues">Issues</button>
-        <button class="tab-btn" onclick="showTab('files',this)" data-tab="files">Arquivos</button>
-        <button class="tab-btn" onclick="showTab('security',this)" data-tab="security">Segurança</button>
-        <button class="tab-btn" onclick="showTab('arch',this)" data-tab="arch">Arquitetura</button>
-        <button class="tab-btn" onclick="showTab('deps',this)" data-tab="deps">Dependências</button>
-        <button class="tab-btn" onclick="showTab('report',this)" data-tab="report">Relatório</button>
-        <button class="tab-btn" onclick="showTab('cicd',this)" data-tab="cicd">CI/CD</button>
-        <button class="tab-btn" id="tab-db-btn" data-tab="db" onclick="showTab('db',this)">Banco</button>
+      <nav class="tab-nav" id="mainTabNav">
+        <button class="tab-btn active" data-tab="issues">Issues</button>
+        <button class="tab-btn" data-tab="files">Arquivos</button>
+        <button class="tab-btn" data-tab="security">Segurança</button>
+        <button class="tab-btn" data-tab="arch">Arquitetura</button>
+        <button class="tab-btn" data-tab="deps">Dependências</button>
+        <button class="tab-btn" data-tab="report">Relatório</button>
+        <button class="tab-btn" data-tab="cicd">CI/CD</button>
+        <button class="tab-btn" id="tab-db-btn" data-tab="db" style="display:none">Banco</button>
+        <button class="tab-btn" data-tab="rules">Catálogo de Regras</button>
       </nav>
 
-      <button class="btn-new-analysis" onclick="resetToUpload()">
+      <button id="btnNewAnalysis" class="btn-new-analysis">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
           <path d="M21 12a9 9 0 11-9-9c2.5 0 4.8 1 6.4 2.6L21 8" stroke-linecap="round" stroke-linejoin="round" />
           <path d="M21 3v5h-5" stroke-linecap="round" stroke-linejoin="round" />
@@ -164,6 +176,7 @@
             style="display:none;font-size:10px;padding:2px 8px;border-radius:4px;background:rgba(108,142,245,.15);color:#6c8ef5;font-family:var(--mono);font-weight:600">GeneXus
             XPZ</span>
         </div>
+        <div id="heatmap-root"></div>
         <div class="table-wrap">
           <table class="data-table" id="filesTable">
             <thead>
@@ -210,14 +223,28 @@
 
       <!-- RELATÓRIO -->
       <div id="tab-report" class="tab-panel" style="display:none">
+
+        <div style="display: flex; justify-content: flex-end; margin-bottom: 16px;">
+          <button id="btnPrintPdf" class="btn-demo"
+            style="border-color: var(--purple-bd); color: var(--purple); font-weight: 700; display: flex; align-items: center; gap: 6px;">
+            📄 Exportar Relatório Executivo (PDF)
+          </button>
+        </div>
+
         <div id="reportContent"></div>
       </div>
+
+      
 
       <!-- CI/CD -->
       <div id="tab-cicd" class="tab-panel" style="display:none">
         <div class="panel-header">
           <h2 class="panel-title">Quality Gate — CI/CD</h2>
-          <button class="btn-download" onclick="downloadJson()">⬇ Baixar JSON</button>
+          <div style="margin-left: auto; display: flex; gap: 8px;">
+            <button id="btnDownloadJson" class="btn-download" title="JSON Customizado da Ferramenta">⬇ JSON</button>
+            <button id="btnDownloadSarif" class="btn-download" style="border-color: var(--blue-bd); color: var(--blue);"
+              title="Padrão de Indústria">⬇ Baixar SARIF</button>
+          </div>
         </div>
         <pre class="json-output" id="jsonOutput"></pre>
       </div>
@@ -231,6 +258,31 @@
         <div id="dbContent"></div>
       </div>
 
+      <!--Regras-->
+      <div id="tab-rules" class="tab-panel" style="display:none">
+        <div class="panel-header">
+          <h2 class="panel-title">Catálogo de Regras <span class="panel-count" id="rules-count">0</span></h2>
+
+          <div style="display:flex; gap:10px; margin-left:auto; flex-wrap:wrap">
+            <select id="ruleOriginFilter" onchange="filterRuleCatalog()" class="search-input"
+              style="border: 1.5px solid var(--border); border-radius: 10px; padding: 9px 14px; background: var(--white);">
+              <option value="all">Todas as Origens</option>
+              <option value="generic">Genéricas (JS, TS, Py...)</option>
+              <option value="gx">GeneXus (XPZ)</option>
+            </select>
+
+            <div class="search-wrap" style="margin-left: 0;">
+              <svg class="search-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
+                <circle cx="7" cy="7" r="4.5" />
+                <path d="M10.5 10.5l3 3" stroke-linecap="round" />
+              </svg>
+              <input class="search-input" id="searchInput" placeholder="Buscar por arquivo, regra ou categoria…">
+            </div>
+          </div>
+        </div>
+
+        <div class="rules-grid" id="rulesGrid" style="display: flex; flex-direction: column; gap: 16px;"></div>
+      </div>
     </div><!-- /tab-content -->
   </div><!-- /analysisResult -->
 
@@ -262,7 +314,7 @@
           <h2 class="modal-title" id="modalTitle"></h2>
           <div class="modal-meta" id="modalMeta"></div>
         </div>
-        <button class="modal-close" onclick="closeModal()">✕</button>
+        <button id="btnCloseIssueModal" class="modal-close">✕</button>
       </div>
       <div class="modal-body" id="modalBody"></div>
     </div>
@@ -277,10 +329,25 @@
           <span class="cp-filename" id="cpFileName"></span>
           <div id="cpIssuesSummary" style="display:flex;gap:5px;flex-wrap:wrap;align-items:center"></div>
         </div>
-        <button class="modal-close" onclick="closeCodePreview()">✕</button>
+        <button id="btnCloseCodePreviewModal" class="modal-close">✕</button>
       </div>
       <div class="cp-section-tabs" id="cpSectionTabs" style="display:none"></div>
       <div class="cp-modal-body" id="cpBody"></div>
+    </div>
+  </div>
+
+  <div id="historyModal" class="modal-backdrop" style="display:none">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div class="modal-head-left">
+          <h2 class="modal-title">Histórico de Análises</h2>
+          <div class="modal-meta" style="color:var(--ink3); font-size:13px">Recupere análises anteriores armazenadas
+            localmente no seu navegador.</div>
+        </div>
+        <button id="btnCloseHistoryModal" class="modal-close">✕</button>
+      </div>
+      <div class="modal-body" id="historyList" style="max-height:60vh; overflow-y:auto;">
+      </div>
     </div>
   </div>
 

@@ -1,19 +1,4 @@
-// ════════════════════════════════════════════
-// 9. BASE DE CONHECIMENTO (ISSUE_KB)
-// Cada entrada mapeia um ID de issue a um objeto com:
-//   what    — explicação do problema (HTML permitido)
-//   impact  — lista de impactos
-//   bad     — código problemático (texto)
-//   good    — código correto (texto)
-//   badLines  — linhas a destacar em vermelho
-//   goodLines — linhas a destacar em verde
-// ════════════════════════════════════════════
-
 export const ISSUE_KB = {
-  // ════════════════════════════════════════════
-  // LINGUAGENS GENÉRICAS (JS, TS, Py, Java, Go, PHP, C#, etc.)
-  // ════════════════════════════════════════════
-
   SEC001: {
     what: `<b>SQL Injection</b> é uma vulnerabilidade crítica que ocorre quando inputs não sanitizados são concatenados diretamente na string da query SQL. Isso permite que um atacante manipule a consulta para ler, modificar ou destruir dados.`,
     impact: [
@@ -154,7 +139,7 @@ export const ISSUE_KB = {
   },
 
   // ════════════════════════════════════════════
-  // GENEXUS 9 ESPECÍFICO (Prefixo GX_)
+  // GENEXUS 9 (Prefixo GX_)
   // ════════════════════════════════════════════
 
   GX_PERF001: {
